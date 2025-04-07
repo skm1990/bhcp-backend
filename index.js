@@ -141,23 +141,35 @@ app.post('/api/addEntry', async (req, res) => {
             dispatchNumber,
             date,
             subject,
-            fileType,
-            fileCategory,
+            fileType, // This will be "Type of File" (Letter, Note for CS, etc.)
+            fileCategory, // This will be "File" (SLIC, NADRA, etc.)
             tags,
             user,
             files
         } = req.body;
 
         // Validate required fields
-        if (!dispatchNumber || !date || !subject) {
+        if (!dispatchNumber || !date || !subject || !fileType || !fileCategory) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: dispatchNumber, date, and subject are required'
+                error: 'Missing required fields: dispatchNumber, date, subject, fileType, and fileCategory are required'
             });
         }
 
         // Format files for sheet entry
         const fileLinks = files.map(file => `${file.name}: ${file.webViewLink}`).join('\n');
+
+        // Prepare the row data
+        const rowData = [
+            dispatchNumber,  // Column A: Full Dispatch Number (e.g., No.BHCP/2025/SLIC/001)
+            date,           // Column B: Date
+            subject,        // Column C: Subject
+            fileType,       // Column D: Type of File (Letter, Note for CS, etc.)
+            fileCategory,   // Column E: File (SLIC, NADRA, etc.)
+            tags,           // Column F: Tags
+            user,           // Column G: User
+            fileLinks       // Column H: Files (links)
+        ];
 
         // Append row to Google Sheet
         await sheets.spreadsheets.values.append({
@@ -165,20 +177,24 @@ app.post('/api/addEntry', async (req, res) => {
             range: 'Sheet1!A:H',
             valueInputOption: 'USER_ENTERED',
             resource: {
-                values: [[
-                    dispatchNumber,
-                    date,
-                    subject,
-                    fileType,
-                    fileCategory,
-                    tags,
-                    user,
-                    fileLinks
-                ]]
+                values: [rowData]
             }
         });
 
-        res.json({ success: true });
+        res.json({ 
+            success: true,
+            message: 'Entry added successfully',
+            data: {
+                dispatchNumber,
+                date,
+                subject,
+                fileType,
+                fileCategory,
+                tags,
+                user,
+                files: files.length
+            }
+        });
 
     } catch (error) {
         console.error('Error adding entry:', error);
