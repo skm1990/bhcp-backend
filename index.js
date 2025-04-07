@@ -49,9 +49,49 @@ const initializeGoogleAPIs = () => {
     }
 };
 
+// Root route
+app.get('/', (req, res) => {
+    res.send('Welcome to the BHCP Backend!');
+});
+
 // Test endpoint
 app.get('/api/test', (req, res) => {
     res.json({ message: 'Backend is working!' });
+});
+
+// Test credentials endpoint
+app.get('/api/test-credentials', async (req, res) => {
+    try {
+        const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+        const { sheets } = initializeGoogleAPIs();
+        
+        // Test Google Sheets API
+        await sheets.spreadsheets.get({
+            spreadsheetId: SPREADSHEET_ID
+        });
+
+        res.json({
+            success: true,
+            message: 'Credentials are valid and Google Sheets API is accessible',
+            projectId: credentials.project_id,
+            clientEmail: credentials.client_email
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to validate credentials',
+            message: error.message
+        });
+    }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+    });
 });
 
 // Endpoint to upload file to Google Drive
@@ -108,6 +148,14 @@ app.post('/api/addEntry', async (req, res) => {
             files
         } = req.body;
 
+        // Validate required fields
+        if (!dispatchNumber || !date || !subject) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: dispatchNumber, date, and subject are required'
+            });
+        }
+
         // Format files for sheet entry
         const fileLinks = files.map(file => `${file.name}: ${file.webViewLink}`).join('\n');
 
@@ -138,6 +186,23 @@ app.post('/api/addEntry', async (req, res) => {
     }
 });
 
-// Remove the app.listen() call - Vercel will handle this
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        success: false,
+        error: 'Something went wrong!',
+        message: err.message
+    });
+});
+
+// Handle 404 errors
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'Route not found'
+    });
+});
+
 // Export the Express app
 module.exports = app;
