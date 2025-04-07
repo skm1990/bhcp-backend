@@ -16,6 +16,58 @@ app.use(bodyParser.json());
 const SPREADSHEET_ID = '1hNZ-vuH3N5kCz67SGh9bgZ00duvvF1AsL2iKDUwJZFg';
 const FOLDER_ID = '1KyoRjC5ofJzupLVSACVlfXAG3bAPXOJs';
 
+// Store last dispatch numbers in memory
+let lastDispatchNumbers = {
+    letters: 0,  // For "Letter" type
+    others: 0    // For other file types
+};
+
+// Function to get the last numbers from Google Sheet
+async function updateLastNumbersFromSheet() {
+    try {
+        const { sheets } = initializeGoogleAPIs();
+        
+        // Get all values from the sheet
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Sheet1!A:D'  // Get dispatch numbers and file types
+        });
+
+        const rows = response.data.values || [];
+        
+        // Skip header row if it exists
+        const dataRows = rows.slice(1);
+        
+        // Process each row to find the highest numbers
+        dataRows.forEach(row => {
+            if (row[0] && row[3]) {  // If dispatch number and file type exist
+                const dispatchNum = row[0];  // Column A: Dispatch Number
+                const fileType = row[3];     // Column D: File Type
+
+                if (fileType === 'Letter') {
+                    // Extract the last number from format No.BHCP/year/category/NNNN-XXX
+                    const match = dispatchNum.match(/(\d+)-(\d+)$/);
+                    if (match) {
+                        const lastNumber = parseInt(match[2]);
+                        lastDispatchNumbers.letters = Math.max(lastDispatchNumbers.letters, lastNumber);
+                    }
+                } else {
+                    // Extract the last number from format No.BHCP/category/year/XXX
+                    const match = dispatchNum.match(/(\d+)$/);
+                    if (match) {
+                        const lastNumber = parseInt(match[1]);
+                        lastDispatchNumbers.others = Math.max(lastDispatchNumbers.others, lastNumber);
+                    }
+                }
+            }
+        });
+
+        console.log('Updated last numbers from sheet:', lastDispatchNumbers);
+    } catch (error) {
+        console.error('Error updating last numbers from sheet:', error);
+    }
+}
+
 // Configure multer for handling file uploads
 const storage = multer.memoryStorage(); // Use memory storage instead of disk
 const upload = multer({
@@ -57,6 +109,40 @@ app.get('/', (req, res) => {
 // Test endpoint
 app.get('/api/test', (req, res) => {
     res.json({ message: 'Backend is working!' });
+});
+
+// Get last dispatch numbers endpoint
+app.get('/api/lastDispatchNumbers', async (req, res) => {
+    try {
+        // Update numbers from sheet before sending
+        await updateLastNumbersFromSheet();
+        res.json({
+            success: true,
+            lastDispatchNumbers
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get last dispatch numbers',
+            message: error.message
+        });
+    }
+});
+
+// Update last dispatch number endpoint
+app.post('/api/updateLastDispatchNumber', (req, res) => {
+    const { type, newTotal } = req.body;
+
+    if (type === 'Letter') {
+        lastDispatchNumbers.letters = parseInt(newTotal);
+    } else {
+        lastDispatchNumbers.others = parseInt(newTotal);
+    }
+
+    res.json({
+        success: true,
+        lastDispatchNumbers
+    });
 });
 
 // Test credentials endpoint
@@ -141,8 +227,8 @@ app.post('/api/addEntry', async (req, res) => {
             dispatchNumber,
             date,
             subject,
-            fileType, // This will be "Type of File" (Letter, Note for CS, etc.)
-            fileCategory, // This will be "File" (SLIC, NADRA, etc.)
+            fileType,
+            fileCategory,
             tags,
             user,
             files
@@ -161,14 +247,14 @@ app.post('/api/addEntry', async (req, res) => {
 
         // Prepare the row data
         const rowData = [
-            dispatchNumber,  // Column A: Full Dispatch Number (e.g., No.BHCP/2025/SLIC/001)
-            date,           // Column B: Date
-            subject,        // Column C: Subject
-            fileType,       // Column D: Type of File (Letter, Note for CS, etc.)
-            fileCategory,   // Column E: File (SLIC, NADRA, etc.)
-            tags,           // Column F: Tags
-            user,           // Column G: User
-            fileLinks       // Column H: Files (links)
+            dispatchNumber,
+            date,
+            subject,
+            fileType,
+            fileCategory,
+            tags,
+            user,
+            fileLinks
         ];
 
         // Append row to Google Sheet
@@ -180,6 +266,19 @@ app.post('/api/addEntry', async (req, res) => {
                 values: [rowData]
             }
         });
+
+        // Update last numbers after successful entry
+        if (fileType === 'Letter') {
+            const match = dispatchNumber.match(/(\d+)-(\d+)$/);
+            if (match) {
+                lastDispatchNumbers.letters = parseInt(match[2]);
+            }
+        } else {
+            const match = dispatchNumber.match(/(\d+)$/);
+            if (match) {
+                lastDispatchNumbers.others = parseInt(match[1]);
+            }
+        }
 
         res.json({ 
             success: true,
