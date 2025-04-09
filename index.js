@@ -18,7 +18,7 @@ const FOLDER_ID = '1KyoRjC5ofJzupLVSACVlfXAG3bAPXOJs';
 
 // Store last dispatch numbers in memory
 let lastDispatchNumbers = {
-    letters: 0,  // For "Letter" type
+    letters: 0,  // For "Letter" type (will store the next starting number)
     others: 0    // For other file types
 };
 
@@ -45,24 +45,28 @@ async function updateLastNumbersFromSheet() {
                 const fileType = row[3];     // Column D: File Type
 
                 if (fileType === 'Letter') {
-                    // Extract the last number from format No.BHCP/year/category/NNNN-XXX
+                    // Extract the ending number from format No.BHCP/year/category/NNNN-XXX
                     const match = dispatchNum.match(/(\d+)-(\d+)$/);
                     if (match) {
-                        const lastNumber = parseInt(match[2]);
-                        lastDispatchNumbers.letters = Math.max(lastDispatchNumbers.letters, lastNumber);
+                        const endNumber = parseInt(match[2]);
+                        // Store the next starting number (end number + 1)
+                        const nextStartingNumber = endNumber + 1;
+                        lastDispatchNumbers.letters = Math.max(lastDispatchNumbers.letters, nextStartingNumber);
                     }
                 } else {
                     // Extract the last number from format No.BHCP/category/year/XXX
                     const match = dispatchNum.match(/(\d+)$/);
                     if (match) {
                         const lastNumber = parseInt(match[1]);
-                        lastDispatchNumbers.others = Math.max(lastDispatchNumbers.others, lastNumber);
+                        // Store the next number
+                        const nextNumber = lastNumber + 1;
+                        lastDispatchNumbers.others = Math.max(lastDispatchNumbers.others, nextNumber);
                     }
                 }
             }
         });
 
-        console.log('Updated last numbers from sheet:', lastDispatchNumbers);
+        console.log('Updated last numbers from sheet (next starting numbers):', lastDispatchNumbers);
     } catch (error) {
         console.error('Error updating last numbers from sheet:', error);
     }
@@ -134,9 +138,11 @@ app.post('/api/updateLastDispatchNumber', (req, res) => {
     const { type, newTotal } = req.body;
 
     if (type === 'Letter') {
-        lastDispatchNumbers.letters = parseInt(newTotal);
+        // For letters, store the next starting number
+        lastDispatchNumbers.letters = parseInt(newTotal) + 1;
     } else {
-        lastDispatchNumbers.others = parseInt(newTotal);
+        // For others, store the next number
+        lastDispatchNumbers.others = parseInt(newTotal) + 1;
     }
 
     res.json({
@@ -267,16 +273,20 @@ app.post('/api/addEntry', async (req, res) => {
             }
         });
 
-        // Update last numbers after successful entry
+        // Update the next starting number after successful entry
         if (fileType === 'Letter') {
             const match = dispatchNumber.match(/(\d+)-(\d+)$/);
             if (match) {
-                lastDispatchNumbers.letters = parseInt(match[2]);
+                const endNumber = parseInt(match[2]);
+                // Store the next starting number
+                lastDispatchNumbers.letters = endNumber + 1;
             }
         } else {
             const match = dispatchNumber.match(/(\d+)$/);
             if (match) {
-                lastDispatchNumbers.others = parseInt(match[1]);
+                const number = parseInt(match[1]);
+                // Store the next number
+                lastDispatchNumbers.others = number + 1;
             }
         }
 
